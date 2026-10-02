@@ -1,0 +1,573 @@
+<!DOCTYPE1 html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>曲面の接平面と切断面の接線 (3D)</title>
+  
+  <!-- MathJax for LaTeX Rendering -->
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      },
+      svg: {
+        fontCache: 'global'
+      }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+  <!-- Three.js and OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      overflow: hidden;
+      background-color: #1a1a24;
+      color: #e0e0e0;
+    }
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+    #ui-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 10;
+      background: rgba(25, 28, 36, 0.88);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 20px;
+      border-radius: 12px;
+      width: 340px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+    h1 {
+      font-size: 1.1rem;
+      margin-bottom: 12px;
+      color: #ffffff;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding-bottom: 8px;
+    }
+    .math-desc {
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin-bottom: 15px;
+      color: #cccccc;
+      background: rgba(0,0,0,0.2);
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .control-group {
+      margin-bottom: 14px;
+    }
+    .control-group label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+      color: #bbbbbb;
+    }
+    .control-group input[type="range"] {
+      width: 100%;
+      accent-color: #4f46e5;
+      cursor: pointer;
+    }
+    .toggle-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 15px;
+    }
+    .toggle-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #ccc;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .toggle-btn.active {
+      background: rgba(79, 70, 229, 0.3);
+      border-color: #6366f1;
+      color: #fff;
+      font-weight: bold;
+    }
+    .legend {
+      margin-top: 15px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 10px;
+      font-size: 0.8rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 8px;
+      display: inline-block;
+    }
+    /* 3D Label Overlay */
+    .latex-label {
+      position: absolute;
+      z-index: 5;
+      color: #ffffff;
+      font-size: 14px;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      background: rgba(15, 15, 20, 0.75);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      white-space: nowrap;
+      transition: opacity 0.15s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <!-- LaTeX Labels Canvas Overlay -->
+  <div id="labels-container"></div>
+
+  <div id="ui-panel">
+    <h1>曲面 $S$ と接平面 $\pi$ の関係</h1>
+    
+    <div class="math-desc">
+      曲面 $S: z = f(x,y)$ 上の点 $(a,b)$ において：<br>
+      ・平面 $A: x=a$ 上の接線 $l_b$<br>
+      ・平面 $B: y=b$ 上の接線 $l_a$<br>
+      接平面 $\pi$ は $l_a$ と $l_b$ の両方を含みます。
+    </div>
+
+    <div class="control-group">
+      <label>点 $a$ ($x$ 座標): <span id="val-a">0.5</span></label>
+      <input type="range" id="slider-a" min="-1.5" max="1.5" step="0.05" value="0.5">
+    </div>
+
+    <div class="control-group">
+      <label>点 $b$ ($y$ 座標): <span id="val-b">0.5</span></label>
+      <input type="range" id="slider-b" min="-1.5" max="1.5" step="0.05" value="0.5">
+    </div>
+
+    <div class="toggle-group">
+      <button class="toggle-btn active" id="btn-planeA" onclick="toggleVisibility('planeA')">平面 $A\,(x=a)$</button>
+      <button class="toggle-btn active" id="btn-planeB" onclick="toggleVisibility('planeB')">平面 $B\,(y=b)$</button>
+      <button class="toggle-btn active" id="btn-planePi" onclick="toggleVisibility('planePi')">接平面 $\pi$</button>
+      <button class="toggle-btn active" id="btn-lines" onclick="toggleVisibility('lines')">接線 $l_a, l_b$</button>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="legend-color" style="background: #3b82f6;"></span> 曲面 $S: z = f(x,y)$</div>
+      <div class="legend-item"><span class="legend-color" style="background: #ef4444;"></span> 平面 $A: x=a$ / 接線 $l_b$</div>
+      <div class="legend-item"><span class="legend-color" style="background: #10b981;"></span> 平面 $B: y=b$ / 接線 $l_a$</div>
+      <div class="legend-item"><span class="legend-color" style="background: #f59e0b;"></span> 接平面 $\pi$</div>
+    </div>
+  </div>
+
+  <script>
+    // --- 数学関数定義 ---
+    // サンプル曲面: f(x,y) = 1.2 - 0.3*x^2 - 0.4*y^2 + 0.2*x*y （なめらかなサドル/楕円放物面風）
+    function f(x, y) {
+      return 1.2 - 0.3 * x * x - 0.4 * y * y + 0.2 * x * y;
+    }
+    // 偏導関数 df/dx
+    function dfdx(x, y) {
+      return -0.6 * x + 0.2 * y;
+    }
+    // 偏導関数 df/dy
+    function dfdy(x, y) {
+      return -0.8 * y + 0.2 * x;
+    }
+
+    // --- 変数と状態 ---
+    let state = {
+      a: 0.5,
+      b: 0.5,
+      showPlaneA: true,
+      showPlaneB: true,
+      showPlanePi: true,
+      showLines: true
+    };
+
+    // --- Three.js 初期化 ---
+    const container = document.getElementById('canvas-container');
+    const labelsContainer = document.getElementById('labels-container');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x121218);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(5, 4, 6);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 + 0.1; // 地面下に潜り込みすぎないよう制御
+
+    // --- ライティング ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
+    dirLight1.position.set(5, 10, 7);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0x88bbff, 0.3);
+    dirLight2.position.set(-5, -5, -5);
+    scene.add(dirLight2);
+
+    // --- 座標軸・グリッド ---
+    const gridHelper = new THREE.GridHelper(6, 20, 0x444455, 0x222233);
+    gridHelper.position.y = -0.01;
+    scene.add(gridHelper);
+
+    // 軸（X: 赤, Y: 緑, Z: 青 にThree.js座標を合わせる。Three.jsではYが上なので、数学のZをThree.jsのYに対応）
+    // 数学 (x, y, z) -> Three.js (x, z, y)
+    function mathToThree(x, y, z) {
+      return new THREE.Vector3(x, z, y);
+    }
+
+    // --- オブジェクト作成関数群 ---
+    
+    // 1. 曲面 S
+    const surfaceSize = 2.2;
+    const surfaceSegments = 60;
+    const surfaceGeo = new THREE.PlaneGeometry(surfaceSize * 2, surfaceSize * 2, surfaceSegments, surfaceSegments);
+    
+    // 頂点位置更新
+    function updateSurfaceGeometry(geo) {
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const u = pos.getX(i);
+        const v = pos.getY(i);
+        // PlaneGeometryはデフォルトでXY平面上。数学座標の (x, y) = (u, v)
+        const z = f(u, v);
+        // Three.js座標系へ： (x, y, z) -> (u, z, v)
+        pos.setXYZ(i, u, z, -v); // vを反転させて右手系に維持
+      }
+      geo.computeVertexNormals();
+      geo.attributes.position.needsUpdate = true;
+    }
+    
+    const surfaceMat = new THREE.MeshStandardMaterial({
+      color: 0x3b82f6,
+      side: THREE.DoubleSide,
+      roughness: 0.3,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.75,
+      wireframe: false
+    });
+    const surfaceMesh = new THREE.Mesh(surfaceGeo, surfaceMat);
+    updateSurfaceGeometry(surfaceGeo);
+    scene.add(surfaceMesh);
+
+    // ワイヤーフレーム（視認性向上）
+    const wireframeMat = new THREE.MeshBasicMaterial({
+      color: 0x60a5fa,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.15
+    });
+    const wireframeMesh = new THREE.Mesh(surfaceGeo, wireframeMat);
+    scene.add(wireframeMesh);
+
+    // 2. 接点 P (a, b, f(a,b))
+    const pointGeo = new THREE.SphereGeometry(0.06, 32, 32);
+    const pointMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1, metalness: 0.8 });
+    const pointP = new THREE.Mesh(pointGeo, pointMat);
+    scene.add(pointP);
+
+    // 3. 平面 A (x = a) & 曲線 v = f(a, y)
+    const planeAGeo = new THREE.PlaneGeometry(surfaceSize * 2, 3);
+    const planeAMat = new THREE.MeshBasicMaterial({
+      color: 0xef4444,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.25,
+      depthWrite: false
+    });
+    const planeAMesh = new THREE.Mesh(planeAGeo, planeAMat);
+    scene.add(planeAMesh);
+
+    // 4. 平面 B (y = b) & 曲線 u = f(x, b)
+    const planeBGeo = new THREE.PlaneGeometry(surfaceSize * 2, 3);
+    const planeBMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.25,
+      depthWrite: false
+    });
+    const planeBMesh = new THREE.Mesh(planeBGeo, planeBMat);
+    scene.add(planeBMesh);
+
+    // 切断面曲線
+    const curveAMat = new THREE.LineBasicMaterial({ color: 0xf87171, linewidth: 3 });
+    const curveBMat = new THREE.LineBasicMaterial({ color: 0x34d399, linewidth: 3 });
+    let curveALine = new THREE.Line(new THREE.BufferGeometry(), curveAMat);
+    let curveBLine = new THREE.Line(new THREE.BufferGeometry(), curveBMat);
+    scene.add(curveALine);
+    scene.add(curveBLine);
+
+    // 5. 接線 la と lb
+    const lineLaMat = new THREE.LineBasicMaterial({ color: 0x059669, linewidth: 5 }); // GREEN (on B)
+    const lineLbMat = new THREE.LineBasicMaterial({ color: 0xdc2626, linewidth: 5 }); // RED (on A)
+    let lineLa = new THREE.Line(new THREE.BufferGeometry(), lineLaMat);
+    let lineLb = new THREE.Line(new THREE.BufferGeometry(), lineLbMat);
+    scene.add(lineLa);
+    scene.add(lineLb);
+
+    // 6. 接平面 pi
+    const planePiGeo = new THREE.PlaneGeometry(2.2, 2.2);
+    const planePiMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.45,
+      roughness: 0.4,
+      metalness: 0.1,
+      depthWrite: false
+    });
+    const planePiMesh = new THREE.Mesh(planePiGeo, planePiMat);
+    scene.add(planePiMesh);
+
+    // 接平面の枠線
+    const planePiEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(planePiGeo),
+      new THREE.LineBasicMaterial({ color: 0xd97706, linewidth: 2 })
+    );
+    planePiMesh.add(planePiEdges);
+
+
+    // --- LaTeX ラベル管理 ---
+    const labels = [
+      { id: 'label-P', text: '$P(a,b)$', pos: new THREE.Vector3() },
+      { id: 'label-pi', text: '接平面 $\\pi$', pos: new THREE.Vector3() },
+      { id: 'label-la', text: '接線 $l_a$', pos: new THREE.Vector3() },
+      { id: 'label-lb', text: '接線 $l_b$', pos: new THREE.Vector3() },
+      { id: 'label-planeA', text: '平面 $A: x=a$', pos: new THREE.Vector3() },
+      { id: 'label-planeB', text: '平面 $B: y=b$', pos: new THREE.Vector3() },
+      { id: 'label-S', text: '曲面 $S$', pos: new THREE.Vector3(1.8, f(1.8, -1.8), 1.8) }
+    ];
+
+    function initLabels() {
+      labelsContainer.innerHTML = '';
+      labels.forEach(l => {
+        const div = document.createElement('div');
+        div.className = 'latex-label';
+        div.id = l.id;
+        div.innerHTML = l.text;
+        labelsContainer.appendChild(div);
+      });
+      // MathJaxで描画
+      if (window.MathJax && MathJax.typeset) {
+        MathJax.typeset();
+      }
+    }
+
+    // --- 3D座標から2Dスクリーン座標への変換関数 ---
+    function updateLabelsPosition() {
+      const tempV = new THREE.Vector3();
+      labels.forEach(l => {
+        const el = document.getElementById(l.id);
+        if (!el) return;
+
+        // 非表示設定の連動
+        if ((l.id === 'label-planeA' && !state.showPlaneA) ||
+            (l.id === 'label-planeB' && !state.showPlaneB) ||
+            (l.id === 'label-pi' && !state.showPlanePi) ||
+            ((l.id === 'label-la' || l.id === 'label-lb') && !state.showLines)) {
+          el.style.opacity = '0';
+          return;
+        }
+
+        tempV.copy(l.pos);
+        tempV.project(camera);
+
+        // カメラの後ろにある場合は非表示
+        if (tempV.z > 1) {
+          el.style.opacity = '0';
+          return;
+        }
+
+        const x = (tempV.x *  .5 + .5) * window.innerWidth;
+        const y = (tempV.y * -.5 + .5) * window.innerHeight;
+
+        el.style.transform = `translate(-50%, -50%) translate(${x}px,${y}px)`;
+        el.style.opacity = '1';
+      });
+    }
+
+    // --- Dynamic Scene Update ---
+    function updateScene() {
+      const a = state.a;
+      const b = state.b;
+      const z0 = f(a, b);
+      const fa = dfdx(a, b);
+      const fb = dfdy(a, b);
+
+      // 1. 点 P
+      pointP.position.set(a, z0, -b);
+      labels.find(l => l.id === 'label-P').pos.set(a, z0 + 0.15, -b);
+
+      // 2. 平面 A (x = a)
+      planeAMesh.position.set(a, 0.8, 0);
+      planeAMesh.rotation.set(0, Math.PI / 2, 0);
+      planeAMesh.visible = state.showPlaneA;
+      labels.find(l => l.id === 'label-planeA').pos.set(a, 1.8, -1.8);
+
+      // 曲線 v = f(a, y)
+      const pointsA = [];
+      for (let y = -surfaceSize; y <= surfaceSize; y += 0.05) {
+        pointsA.push(new THREE.Vector3(a, f(a, y), -y));
+      }
+      curveALine.geometry.dispose();
+      curveALine.geometry = new THREE.BufferGeometry().setFromPoints(pointsA);
+      curveALine.visible = state.showPlaneA;
+
+      // 3. 平面 B (y = b)
+      planeBMesh.position.set(0, 0.8, -b);
+      planeBMesh.rotation.set(0, 0, 0);
+      planeBMesh.visible = state.showPlaneB;
+      labels.find(l => l.id === 'label-planeB').pos.set(1.8, 1.8, -b);
+
+      // 曲線 u = f(x, b)
+      const pointsB = [];
+      for (let x = -surfaceSize; x <= surfaceSize; x += 0.05) {
+        pointsB.push(new THREE.Vector3(x, f(x, b), -b));
+      }
+      curveBLine.geometry.dispose();
+      curveBLine.geometry = new THREE.BufferGeometry().setFromPoints(pointsB);
+      curveBLine.visible = state.showPlaneB;
+
+      // 4. 接線 la (y = b 上, x方向に変化)
+      // 方向ベクトル: (1, fa, 0)
+      const laLength = 1.2;
+      const ptsLa = [
+        new THREE.Vector3(a - laLength, z0 - fa * laLength, -b),
+        new THREE.Vector3(a + laLength, z0 + fa * laLength, -b)
+      ];
+      lineLa.geometry.dispose();
+      lineLa.geometry = new THREE.BufferGeometry().setFromPoints(ptsLa);
+      lineLa.visible = state.showLines;
+      labels.find(l => l.id === 'label-la').pos.copy(ptsLa[1]);
+
+      // 5. 接線 lb (x = a 上, y方向に変化)
+      // 方向ベクトル: (0, fb, 1)
+      const ptsLb = [
+        new THREE.Vector3(a, z0 - fb * laLength, -(b - laLength)),
+        new THREE.Vector3(a, z0 + fb * laLength, -(b + laLength))
+      ];
+      lineLb.geometry.dispose();
+      lineLb.geometry = new THREE.BufferGeometry().setFromPoints(ptsLb);
+      lineLb.visible = state.showLines;
+      labels.find(l => l.id === 'label-lb').pos.copy(ptsLb[1]);
+
+      // 6. 接平面 pi
+      // 方程式: z - z0 = fa*(x - a) + fb*(y - b)
+      // 法線ベクトル: (-fa, 1, -fb) [Math coordinates] -> Three.js (-fa, 1, fb)
+      planePiMesh.position.set(a, z0, -b);
+      
+      // 法線ベクトルから回転設定
+      const normal = new THREE.Vector3(-fa, 1, fb).normalize();
+      const defaultNormal = new THREE.Vector3(0, 0, 1);
+      const quaternion = new THREE.Quaternion();
+      quaternion.setFromUnitVectors(defaultNormal, normal);
+      planePiMesh.rotation.setFromQuaternion(quaternion);
+
+      planePiMesh.visible = state.showPlanePi;
+      labels.find(l => l.id === 'label-pi').pos.set(a + 0.8, z0 + fa * 0.8 + fb * 0.8 + 0.2, -(b + 0.8));
+    }
+
+    // --- UI コントロール イベント ---
+    document.getElementById('slider-a').addEventListener('input', (e) => {
+      state.a = parseFloat(e.target.value);
+      document.getElementById('val-a').innerText = state.a.toFixed(2);
+      updateScene();
+    });
+
+    document.getElementById('slider-b').addEventListener('input', (e) => {
+      state.b = parseFloat(e.target.value);
+      document.getElementById('val-b').innerText = state.b.toFixed(2);
+      updateScene();
+    });
+
+    function toggleVisibility(type) {
+      if (type === 'planeA') {
+        state.showPlaneA = !state.showPlaneA;
+        document.getElementById('btn-planeA').classList.toggle('active', state.showPlaneA);
+      } else if (type === 'planeB') {
+        state.showPlaneB = !state.showPlaneB;
+        document.getElementById('btn-planeB').classList.toggle('active', state.showPlaneB);
+      } else if (type === 'planePi') {
+        state.showPlanePi = !state.showPlanePi;
+        document.getElementById('btn-planePi').classList.toggle('active', state.showPlanePi);
+      } else if (type === 'lines') {
+        state.showLines = !state.showLines;
+        document.getElementById('btn-lines').classList.toggle('active', state.showLines);
+      }
+      updateScene();
+    }
+
+    // リサイズ対応
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- 初期実行 ---
+    initLabels();
+    updateScene();
+
+    // アニメーションループ
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      updateLabelsPosition();
+      renderer.render(scene, camera);
+    }
+    
+    // MathJaxロード後にラベル位置を整えるための微小遅延設定
+    setTimeout(() => {
+      initLabels();
+      animate();
+    }, 500);
+
+  </script>
+</body>
+</html>
